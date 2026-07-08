@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JobScope — 데이터 직군 채용공고 대시보드</title>
+<script src="https://mcp.figma.com/mcp/html-to-design/capture.js" async></script>
+<style>
+  :root{
+    --navy:#0B1F3A;
+    --ink:#101828;
+    --body:#475467;
+    --muted:#98A2B3;
+    --line:#EAECF0;
+    --bg:#F7F8FA;
+    --card:#FFFFFF;
+    --accent:#2563EB;
+    --accent-soft:#EFF4FF;
+    --green:#12B76A;
+    --green-soft:#ECFDF3;
+    --radius:12px;
+    --shadow:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    font-family:"Pretendard","Apple SD Gothic Neo",-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",sans-serif;
+    background:var(--bg);color:var(--ink);font-size:15px;line-height:1.55;
+  }
+  a{text-decoration:none;color:inherit}
+
+  /* ── Top Nav ─────────────────────────── */
+  .nav{
+    position:sticky;top:0;z-index:50;
+    background:#fff;border-bottom:1px solid var(--line);
+  }
+  .nav-inner{
+    max-width:1200px;margin:0 auto;padding:0 24px;
+    height:64px;display:flex;align-items:center;gap:32px;
+  }
+  .logo{display:flex;align-items:center;gap:9px;font-size:19px;font-weight:800;letter-spacing:-.3px}
+  .logo-mark{
+    width:30px;height:30px;border-radius:8px;background:var(--accent);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;
+  }
+  .nav-links{display:flex;gap:26px;font-weight:600;color:var(--body);font-size:14.5px}
+  .nav-links a.active{color:var(--accent)}
+  .nav-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+  .btn-ghost{font-weight:600;color:var(--body);font-size:14.5px}
+  .btn-primary{
+    background:var(--accent);color:#fff;font-weight:700;font-size:14.5px;
+    padding:9px 18px;border-radius:8px;border:none;cursor:pointer;
+  }
+
+  /* ── Hero ────────────────────────────── */
+  .hero{
+    background:linear-gradient(135deg,#0B1F3A 0%,#132D52 55%,#1B3A6B 100%);
+    color:#fff;padding:64px 24px 76px;
+  }
+  .hero-inner{max-width:1200px;margin:0 auto}
+  .hero-badge{
+    display:inline-flex;align-items:center;gap:8px;
+    background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);
+    padding:6px 14px;border-radius:999px;font-size:13px;font-weight:600;color:#C7D7F5;
+  }
+  .hero-badge .dot{width:7px;height:7px;border-radius:50%;background:#4ADE80}
+  .hero h1{font-size:40px;font-weight:800;letter-spacing:-1px;margin:18px 0 10px;line-height:1.25}
+  .hero h1 em{font-style:normal;color:#7FB0FF}
+  .hero p{color:#AFC3E3;font-size:16.5px;max-width:560px}
+  .search-bar{
+    margin-top:30px;background:#fff;border-radius:14px;padding:8px;
+    display:flex;gap:8px;max-width:760px;box-shadow:0 12px 32px rgba(4,12,26,.35);
+  }
+  .search-field{flex:1;display:flex;align-items:center;gap:10px;padding:0 14px}
+  .search-field svg{flex:none}
+  .search-field input{
+    border:none;outline:none;width:100%;font-size:15px;padding:12px 0;
+    font-family:inherit;color:var(--ink);
+  }
+  .search-btn{
+    background:var(--accent);color:#fff;border:none;border-radius:10px;
+    font-size:15px;font-weight:700;padding:0 28px;cursor:pointer;font-family:inherit;
+  }
+  .hero-chips{margin-top:18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .hero-chips span.lbl{font-size:13px;color:#8FA6CB;font-weight:600}
+  .chip{
+    background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);
+    color:#DCE7F9;font-size:13px;font-weight:600;padding:6px 14px;border-radius:999px;
+    cursor:pointer;transition:.15s;
+  }
+  .chip:hover,.chip.on{background:#fff;color:var(--navy);border-color:#fff}
+
+  /* ── Stats strip ─────────────────────── */
+  .stats{max-width:1200px;margin:-34px auto 0;padding:0 24px;position:relative;z-index:5}
+  .stats-inner{
+    background:#fff;border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);display:grid;grid-template-columns:repeat(4,1fr);
+  }
+  .stat{padding:20px 28px;border-right:1px solid var(--line)}
+  .stat:last-child{border-right:none}
+  .stat .num{font-size:24px;font-weight:800;letter-spacing:-.5px}
+  .stat .cap{font-size:13px;color:var(--muted);font-weight:600;margin-top:2px}
+
+  /* ── Layout ──────────────────────────── */
+  .main{max-width:1200px;margin:36px auto 80px;padding:0 24px;display:grid;grid-template-columns:264px 1fr;gap:28px}
+
+  /* Sidebar */
+  .side{position:sticky;top:88px;align-self:start}
+  .panel{background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin-bottom:16px}
+  .panel h3{font-size:14px;font-weight:700;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+  .panel h3 .reset{font-size:12.5px;color:var(--accent);font-weight:600;cursor:pointer}
+  .check{display:flex;align-items:center;gap:10px;padding:7px 0;cursor:pointer;font-size:14px;color:var(--body);font-weight:500}
+  .check input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+  .check .cnt{margin-left:auto;font-size:12px;color:var(--muted);background:var(--bg);padding:1px 8px;border-radius:999px;font-weight:600}
+  .side select{
+    width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;
+    font-family:inherit;font-size:14px;color:var(--ink);background:#fff;outline:none;
+  }
+
+  /* Job list */
+  .list-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+  .list-head h2{font-size:19px;font-weight:800;letter-spacing:-.3px}
+  .list-head h2 b{color:var(--accent)}
+  .sort{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted);font-weight:600}
+  .crawl-status{color:var(--accent);font-size:12.5px;max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #crawl-btn{padding:8px 14px;font-size:13.5px;cursor:pointer}
+  #crawl-btn:disabled{opacity:.55;cursor:wait}
+  .sort select{padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13.5px;background:#fff;outline:none;color:var(--body)}
+
+  .job{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:20px 22px;margin-bottom:12px;
+    display:flex;gap:16px;align-items:flex-start;transition:.15s;
+  }
+  .job:hover{border-color:#B8CCF5;box-shadow:0 4px 14px rgba(37,99,235,.10)}
+  .avatar{
+    flex:none;width:48px;height:48px;border-radius:10px;color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;
+  }
+  .job-body{flex:1;min-width:0}
+  .job-title{font-size:16px;font-weight:700;letter-spacing:-.2px}
+  .job-title a:hover{color:var(--accent)}
+  .job-sub{margin-top:3px;font-size:14px;color:var(--body);font-weight:500}
+  .job-meta{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .tag{font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:999px}
+  .tag.kw{background:var(--accent-soft);color:var(--accent)}
+  .tag.loc{background:var(--bg);color:var(--body);border:1px solid var(--line)}
+  .tag.new{background:var(--green-soft);color:var(--green)}
+  .tag.src{color:#fff}
+  .job-right{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+  .date{font-size:12.5px;color:var(--muted);font-weight:600}
+  .apply{
+    font-size:13.5px;font-weight:700;color:var(--accent);
+    border:1.5px solid #C6D8FB;background:#fff;padding:8px 16px;border-radius:8px;cursor:pointer;transition:.15s;
+  }
+  .apply:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .more{
+    display:block;margin:24px auto 0;background:#fff;border:1px solid var(--line);
+    font-family:inherit;font-size:14.5px;font-weight:700;color:var(--body);
+    padding:12px 36px;border-radius:10px;cursor:pointer;box-shadow:var(--shadow);
+  }
+  .more:hover{border-color:var(--accent);color:var(--accent)}
+  .empty{
+    background:#fff;border:1px dashed var(--line);border-radius:var(--radius);
+    padding:56px 20px;text-align:center;color:var(--muted);font-weight:600;
+  }
+
+  /* Footer */
+  .footer{background:var(--navy);color:#8FA6CB;padding:34px 24px;font-size:13.5px}
+  .footer-inner{max-width:1200px;margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+  .footer .logo{color:#fff;font-size:16px}
+  .footer .logo-mark{width:26px;height:26px;font-size:13px}
+
+  @media (max-width:900px){
+    .main{grid-template-columns:1fr}
+    .side{position:static}
+    .stats-inner{grid-template-columns:repeat(2,1fr)}
+    .stat:nth-child(2){border-right:none}
+    .nav-links{display:none}
+  }
+</style>
+</head>
+<body>
+
+<!-- Top Navigation -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="logo" href="#"><span class="logo-mark">J</span>JobScope</a>
+    <div class="nav-links">
+      <a href="#" class="active">채용공고</a>
+      <a href="#">기업정보</a>
+      <a href="#">연봉통계</a>
+      <a href="#">커리어 인사이트</a>
+    </div>
+    <div class="nav-right">
+      <a class="btn-ghost" href="#">로그인</a>
+      <button class="btn-primary">이력서 등록</button>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<header class="hero">
+  <div class="hero-inner">
+    <span class="hero-badge"><span class="dot"></span>사람인 · 고용24 · LinkedIn 실시간 수집 데이터</span>
+    <h1>데이터 · AI 커리어의 다음 스텝,<br><em>한 곳에서</em> 찾아보세요</h1>
+    <p>AI · 데이터사이언스 · 머신러닝 직군의 최신 채용공고를 매일 수집해 한눈에 보여드립니다.</p>
+    <div class="search-bar">
+      <div class="search-field">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#98A2B3" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="#98A2B3" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="q" type="text" placeholder="직무, 회사, 키워드로 검색">
+      </div>
+      <button class="search-btn" onclick="render()">검색</button>
+    </div>
+    <div class="hero-chips" id="chips">
+      <span class="lbl">인기 검색어</span>
+    </div>
+  </div>
+</header>
+
+<!-- Stats -->
+<section class="stats">
+  <div class="stats-inner">
+    <div class="stat"><div class="num" id="s-total">–</div><div class="cap">전체 공고</div></div>
+    <div class="stat"><div class="num" id="s-comp">–</div><div class="cap">채용 기업</div></div>
+    <div class="stat"><div class="num" id="s-week">–</div><div class="cap">최근 7일 신규</div></div>
+    <div class="stat"><div class="num" id="s-src">–</div><div class="cap">수집 소스</div></div>
+  </div>
+</section>
+
+<!-- Main -->
+<div class="main">
+  <!-- Sidebar filters -->
+  <aside class="side">
+    <div class="panel">
+      <h3>공고 출처 <span class="reset" onclick="resetFilters()">초기화</span></h3>
+      <div id="src-filters"></div>
+    </div>
+    <div class="panel">
+      <h3>키워드 필터</h3>
+      <div id="kw-filters"></div>
+    </div>
+    <div class="panel">
+      <h3>근무 지역</h3>
+      <select id="loc-filter" onchange="render()">
+        <option value="">전체 지역</option>
+      </select>
+    </div>
+  </aside>
+
+  <!-- Job list -->
+  <section>
+    <div class="list-head">
+      <h2>채용공고 <b id="count">0</b>건</h2>
+      <div class="sort">
+        <span id="crawl-status" class="crawl-status"></span>
+        <button class="btn-primary" id="crawl-btn" onclick="startCrawl()">🔄 전체 크롤링 실행</button>
+        정렬
+        <select id="sort" onchange="render()">
+          <option value="new">최신순</option>
+          <option value="old">오래된순</option>
+          <option value="company">회사명순</option>
+        </select>
+      </div>
+    </div>
+    <div id="jobs"></div>
+    <button class="more" id="more" onclick="showMore()">더 보기</button>
+  </section>
+</div>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="footer-inner">
+    <a class="logo" href="#"><span class="logo-mark">J</span>JobScope</a>
+    <span>데이터 출처: 사람인 · 고용24 · LinkedIn 공개 채용공고 · 크롤러 v1.1 · © 2026 JobScope</span>
+  </div>
+</footer>
+
+<script>
+const AVATAR_COLORS = ['#2563EB','#0B1F3A','#7C3AED','#0891B2','#DB2777','#D97706','#059669'];
+const SRC_COLORS = {'사람인':'#4876EF','고용24':'#0E8062','LinkedIn':'#0A66C2'};
+let DATA = [];
+let visible = 12;
+
+const norm = s => (s||'').toLowerCase();
+
+async function load(){
+  try{
+    // no-store: 크롤링 직후 새 데이터를 받아야 하므로 브라우저 캐시 금지
+    const res = await fetch('./all_jobs.json', {cache:'no-store'});
+    if(!res.ok) throw new Error();
+    DATA = await res.json();
+  }catch(e){
+    // 통합 파일이 없으면 LinkedIn 단독 결과로 폴백
+    try{
+      const res = await fetch('./linkedin_result.json', {cache:'no-store'});
+      DATA = (await res.json()).map(d => ({...d, '출처':'LinkedIn'}));
+    }catch(e2){
+      document.getElementById('jobs').innerHTML =
+        '<div class="empty">데이터 파일을 불러올 수 없습니다.<br>python run_all.py 로 크롤링을 먼저 실행한 뒤, 이 폴더에서 python -m http.server 로 열어주세요.</div>';
+      return;
+    }
+  }
+  buildFilters();
+  buildStats();
+  render();
+}
+
+function buildFilters(){
+  const srcCount = {};
+  DATA.forEach(d => srcCount[d['출처']||'기타'] = (srcCount[d['출처']||'기타']||0)+1);
+  document.getElementById('src-filters').innerHTML = Object.entries(srcCount).map(([k,c]) =>
+    `<label class="check"><input type="checkbox" data-f="src" value="${k}" checked onchange="render()">${k}<span class="cnt">${c.toLocaleString()}</span></label>`
+  ).join('');
+
+  const kwCount = {};
+  DATA.forEach(d => kwCount[d['검색어']] = (kwCount[d['검색어']]||0)+1);
+  const box = document.getElementById('kw-filters');
+  box.innerHTML = Object.entries(kwCount).map(([k,c]) =>
+    `<label class="check"><input type="checkbox" value="${k}" checked onchange="render()">${k}<span class="cnt">${c.toLocaleString()}</span></label>`
+  ).join('');
+
+  // hero chips (재로드 시 중복 방지: 기존 칩 제거)
+  const chips = document.getElementById('chips');
+  chips.querySelectorAll('.chip').forEach(e=>e.remove());
+  Object.keys(kwCount).forEach(k=>{
+    const el = document.createElement('span');
+    el.className='chip'; el.textContent=k;
+    el.onclick = ()=>{ document.getElementById('q').value=k; render(); window.scrollTo({top:600,behavior:'smooth'}); };
+    chips.appendChild(el);
+  });
+
+  // location: 첫 토큰(도시) 기준 (재로드 시 중복 방지: 전체 지역만 남기고 리셋)
+  const locs = [...new Set(DATA.map(d => (d['회사 위치']||'').split(',')[0].trim()).filter(Boolean))].sort();
+  const sel = document.getElementById('loc-filter');
+  sel.querySelectorAll('option:not(:first-child)').forEach(o=>o.remove());
+  sel.value = '';
+  locs.forEach(l => { const o=document.createElement('option'); o.value=l; o.textContent=l; sel.appendChild(o); });
+}
+
+function buildStats(){
+  const week = new Date(Date.now() - 7*864e5);
+  document.getElementById('s-total').textContent = DATA.length.toLocaleString();
+  document.getElementById('s-comp').textContent = new Set(DATA.map(d=>d['회사 이름'])).size.toLocaleString();
+  document.getElementById('s-week').textContent = DATA.filter(d=> d['게시일'] && new Date(d['게시일']) >= week).length.toLocaleString();
+  document.getElementById('s-src').textContent = new Set(DATA.map(d=>d['출처'])).size;
+}
+
+function filtered(){
+  const q = norm(document.getElementById('q').value);
+  const kws = [...document.querySelectorAll('#kw-filters input:checked')].map(i=>i.value);
+  const srcs = [...document.querySelectorAll('#src-filters input:checked')].map(i=>i.value);
+  const loc = document.getElementById('loc-filter').value;
+  let rows = DATA.filter(d =>
+    srcs.includes(d['출처']||'기타') &&
+    kws.includes(d['검색어']) &&
+    (!loc || (d['회사 위치']||'').startsWith(loc)) &&
+    (!q || norm(d['공고 이름']).includes(q) || norm(d['회사 이름']).includes(q) || norm(d['검색어']).includes(q))
+  );
+  const sort = document.getElementById('sort').value;
+  if(sort==='new') rows.sort((a,b)=> (b['게시일']||'').localeCompare(a['게시일']||''));
+  if(sort==='old') rows.sort((a,b)=> (a['게시일']||'').localeCompare(b['게시일']||''));
+  if(sort==='company') rows.sort((a,b)=> (a['회사 이름']||'').localeCompare(b['회사 이름']||''));
+  return rows;
+}
+
+function render(){
+  const rows = filtered();
+  document.getElementById('count').textContent = rows.length.toLocaleString();
+  const week = new Date(Date.now() - 7*864e5);
+  const html = rows.slice(0, visible).map(d=>{
+    const name = d['회사 이름']||'?';
+    const color = AVATAR_COLORS[[...name].reduce((a,c)=>a+c.charCodeAt(0),0) % AVATAR_COLORS.length];
+    const isNew = d['게시일'] && new Date(d['게시일']) >= week;
+    const src = d['출처']||'기타';
+    const dateTxt = d['게시일'] || (d['마감일'] ? '마감 '+d['마감일'] : '');
+    return `<article class="job">
+      <div class="avatar" style="background:${color}">${name[0].toUpperCase()}</div>
+      <div class="job-body">
+        <div class="job-title"><a href="${d['링크']}" target="_blank" rel="noopener">${d['공고 이름']}</a></div>
+        <div class="job-sub">${name}</div>
+        <div class="job-meta">
+          <span class="tag src" style="background:${SRC_COLORS[src]||'#667085'}">${src}</span>
+          <span class="tag kw">${d['검색어']}</span>
+          ${d['회사 위치'] ? `<span class="tag loc">📍 ${d['회사 위치']}</span>` : ''}
+          ${isNew ? '<span class="tag new">NEW</span>' : ''}
+        </div>
+      </div>
+      <div class="job-right">
+        <span class="date">${dateTxt}</span>
+        <a class="apply" href="${d['링크']}" target="_blank" rel="noopener">공고 보기</a>
+      </div>
+    </article>`;
+  }).join('');
+  document.getElementById('jobs').innerHTML = html || '<div class="empty">조건에 맞는 공고가 없습니다.</div>';
+  document.getElementById('more').style.display = rows.length > visible ? 'block' : 'none';
+}
+
+function showMore(){ visible += 12; render(); }
+function resetFilters(){
+  document.querySelectorAll('#src-filters input, #kw-filters input').forEach(i=>i.checked=true);
+  document.getElementById('loc-filter').value='';
+  document.getElementById('q').value='';
+  visible = 12;
+  render();
+}
+document.getElementById('q').addEventListener('keydown', e=>{ if(e.key==='Enter') render(); });
+
+/* ── 크롤링 실행 버튼 (server.py 필요) ─────────────── */
+let crawlTimer = null;
+
+async function startCrawl(){
+  try{
+    const res = await fetch('/api/crawl', {method:'POST'});
+    if(res.status === 409){ alert('이미 크롤링이 돌고 있어요. 잠시만 기다려주세요.'); pollCrawl(); return; }
+    if(!res.ok) throw new Error();
+    pollCrawl();
+  }catch(e){
+    alert('크롤링 API에 연결할 수 없습니다.\npython server.py 로 서버를 실행해주세요.\n(python -m http.server 로는 버튼을 쓸 수 없어요)');
+  }
+}
+
+function pollCrawl(){
+  const el = document.getElementById('crawl-status');
+  const btn = document.getElementById('crawl-btn');
+  btn.disabled = true;
+  if(crawlTimer) clearInterval(crawlTimer);
+
+  crawlTimer = setInterval(async ()=>{
+    try{
+      const s = await (await fetch('/api/crawl/status')).json();
+      if(s.running){
+        el.textContent = '수집 중… ' + (s.progress || '');
+        return;
+      }
+      clearInterval(crawlTimer); crawlTimer = null;
+      btn.disabled = false;
+      if(s.returncode === 0){
+        el.textContent = '완료! 데이터 새로고침 중…';
+        visible = 12;
+        await load();          // 새 all_jobs.json 다시 로드
+        el.textContent = '';
+      }else if(s.returncode !== null){
+        el.textContent = '크롤링 실패 — crawl_log.txt 확인';
+      }
+    }catch(e){
+      clearInterval(crawlTimer); crawlTimer = null;
+      btn.disabled = false;
+      el.textContent = '';
+    }
+  }, 3000);
+}
+
+// 새로고침했는데 크롤링이 아직 돌고 있으면 이어서 상태 표시
+(async ()=>{
+  try{
+    const s = await (await fetch('/api/crawl/status')).json();
+    if(s.running) pollCrawl();
+  }catch(e){ /* 정적 서버(http.server)로 열었을 때는 조용히 무시 */ }
+})();
+
+load();
+</script>
+</body>
+</html>
