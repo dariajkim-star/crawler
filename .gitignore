@@ -1,0 +1,9 @@
+# 비밀값
+slack_webhook.txt
+slack_token.txt
+
+# 실행 산출물
+crawl_log.txt
+jobs_history.db
+__pycache__/
+*.pyc

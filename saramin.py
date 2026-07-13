@@ -59,9 +59,16 @@ def crawling_data(search_word, max_pages=10):
         for item_recruit in items:
 
             #1. 공고 제목 + 링크
+            #링크에 검색어/세션 파라미터가 붙어서 같은 공고가 다른 링크로 보임
+            #-> rec_idx만 남긴 정규화 링크로 저장 (중복 제거 정확도 향상)
             title_a = item_recruit.select_one('.job_tit a')
             title = clean_text(title_a)
-            link = ('https://www.saramin.co.kr' + title_a.get('href')) if title_a else ''
+            href = title_a.get('href', '') if title_a else ''
+            m_idx = re.search(r'rec_idx=(\d+)', href)
+            if m_idx:
+                link = f'https://www.saramin.co.kr/zf_user/jobs/relay/view?rec_idx={m_idx.group(1)}'
+            else:
+                link = ('https://www.saramin.co.kr' + href) if href else ''
 
             #2. 회사명
             name = clean_text(item_recruit.select_one('div.area_corp .corp_name'))
@@ -108,11 +115,12 @@ def crawling_data(search_word, max_pages=10):
 
 #진입점: def로 묶은 함수가 실제로 실행되는 부분
 if __name__ == '__main__':
-    keywords = ["AI", "애널리스트", "데이터사이언스", "머신러닝", "ML", "SQL", "openCV"]
+    #키워드는 config.py에서 직군별로 관리
+    from config import ALL_KEYWORDS, MAX_PAGES
 
     corpus = []
-    for kw in keywords:
-        corpus.extend(crawling_data(kw, max_pages=10))
+    for kw in ALL_KEYWORDS:
+        corpus.extend(crawling_data(kw, max_pages=MAX_PAGES))
 
     df = pd.DataFrame(corpus)
     #같은 공고가 여러 키워드에 걸리면 중복 -> 링크 기준 제거

@@ -146,6 +146,10 @@
   .tag.loc{background:var(--bg);color:var(--body);border:1px solid var(--line)}
   .tag.new{background:var(--green-soft);color:var(--green)}
   .tag.src{color:#fff}
+  .tag.watch{background:#FEF3C7;color:#B45309}
+  .mini-actions{display:flex;gap:6px}
+  .mini-btn{border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 10px;cursor:pointer;color:var(--muted);font-size:13px;font-family:inherit}
+  .mini-btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   .job-right{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
   .date{font-size:12.5px;color:var(--muted);font-weight:600}
   .apply{
@@ -212,7 +216,7 @@
       <button class="search-btn" onclick="render()">검색</button>
     </div>
     <div class="hero-chips" id="chips">
-      <span class="lbl">인기 검색어</span>
+      <span class="lbl">직군 바로가기</span>
     </div>
   </div>
 </header>
@@ -236,8 +240,14 @@
       <div id="src-filters"></div>
     </div>
     <div class="panel">
-      <h3>키워드 필터</h3>
-      <div id="kw-filters"></div>
+      <h3>직군 필터</h3>
+      <div id="cat-filters"></div>
+    </div>
+    <div class="panel">
+      <h3>내 상태</h3>
+      <label class="check"><input type="radio" name="stfilter" value="" checked onchange="render()">전체</label>
+      <label class="check"><input type="radio" name="stfilter" value="bm" onchange="render()">★ 북마크</label>
+      <label class="check"><input type="radio" name="stfilter" value="ap" onchange="render()">✓ 지원함</label>
     </div>
     <div class="panel">
       <h3>근무 지역</h3>
@@ -256,6 +266,7 @@
         <button class="btn-primary" id="crawl-btn" onclick="startCrawl()">🔄 전체 크롤링 실행</button>
         정렬
         <select id="sort" onchange="render()">
+          <option value="score">추천순 (점수)</option>
           <option value="new">최신순</option>
           <option value="old">오래된순</option>
           <option value="company">회사명순</option>
@@ -280,6 +291,14 @@ const AVATAR_COLORS = ['#2563EB','#0B1F3A','#7C3AED','#0891B2','#DB2777','#D9770
 const SRC_COLORS = {'사람인':'#4876EF','고용24':'#0E8062','LinkedIn':'#0A66C2'};
 let DATA = [];
 let visible = 12;
+
+// 북마크/지원함 상태 (브라우저 localStorage에 저장 — 새로고침해도 유지)
+const JOB_STATUS = JSON.parse(localStorage.getItem('jobStatus')||'{}');
+function toggleStatus(link, type){
+  JOB_STATUS[link] = JOB_STATUS[link] === type ? '' : type;
+  localStorage.setItem('jobStatus', JSON.stringify(JOB_STATUS));
+  render();
+}
 
 const norm = s => (s||'').toLowerCase();
 
@@ -312,17 +331,17 @@ function buildFilters(){
     `<label class="check"><input type="checkbox" data-f="src" value="${k}" checked onchange="render()">${k}<span class="cnt">${c.toLocaleString()}</span></label>`
   ).join('');
 
-  const kwCount = {};
-  DATA.forEach(d => kwCount[d['검색어']] = (kwCount[d['검색어']]||0)+1);
-  const box = document.getElementById('kw-filters');
-  box.innerHTML = Object.entries(kwCount).map(([k,c]) =>
+  const catCount = {};
+  DATA.forEach(d => catCount[d['직군']||'기타'] = (catCount[d['직군']||'기타']||0)+1);
+  const box = document.getElementById('cat-filters');
+  box.innerHTML = Object.entries(catCount).map(([k,c]) =>
     `<label class="check"><input type="checkbox" value="${k}" checked onchange="render()">${k}<span class="cnt">${c.toLocaleString()}</span></label>`
   ).join('');
 
-  // hero chips (재로드 시 중복 방지: 기존 칩 제거)
+  // hero chips (재로드 시 중복 방지: 기존 칩 제거) — 직군 이름으로 표시
   const chips = document.getElementById('chips');
   chips.querySelectorAll('.chip').forEach(e=>e.remove());
-  Object.keys(kwCount).forEach(k=>{
+  Object.keys(catCount).forEach(k=>{
     const el = document.createElement('span');
     el.className='chip'; el.textContent=k;
     el.onclick = ()=>{ document.getElementById('q').value=k; render(); window.scrollTo({top:600,behavior:'smooth'}); };
@@ -347,16 +366,21 @@ function buildStats(){
 
 function filtered(){
   const q = norm(document.getElementById('q').value);
-  const kws = [...document.querySelectorAll('#kw-filters input:checked')].map(i=>i.value);
+  const cats = [...document.querySelectorAll('#cat-filters input:checked')].map(i=>i.value);
   const srcs = [...document.querySelectorAll('#src-filters input:checked')].map(i=>i.value);
   const loc = document.getElementById('loc-filter').value;
   let rows = DATA.filter(d =>
     srcs.includes(d['출처']||'기타') &&
-    kws.includes(d['검색어']) &&
+    cats.includes(d['직군']||'기타') &&
     (!loc || (d['회사 위치']||'').startsWith(loc)) &&
-    (!q || norm(d['공고 이름']).includes(q) || norm(d['회사 이름']).includes(q) || norm(d['검색어']).includes(q))
+    (!q || norm(d['공고 이름']).includes(q) || norm(d['회사 이름']).includes(q) || norm(d['검색어']).includes(q) || norm(d['직군']).includes(q))
   );
+  // 내 상태 필터 (전체/북마크/지원함)
+  const st = document.querySelector('input[name=stfilter]:checked')?.value || '';
+  if(st) rows = rows.filter(d => JOB_STATUS[d['링크']] === st);
+
   const sort = document.getElementById('sort').value;
+  if(sort==='score') rows.sort((a,b)=> (b['점수']||0)-(a['점수']||0));
   if(sort==='new') rows.sort((a,b)=> (b['게시일']||'').localeCompare(a['게시일']||''));
   if(sort==='old') rows.sort((a,b)=> (a['게시일']||'').localeCompare(b['게시일']||''));
   if(sort==='company') rows.sort((a,b)=> (a['회사 이름']||'').localeCompare(b['회사 이름']||''));
@@ -380,13 +404,19 @@ function render(){
         <div class="job-sub">${name}</div>
         <div class="job-meta">
           <span class="tag src" style="background:${SRC_COLORS[src]||'#667085'}">${src}</span>
-          <span class="tag kw">${d['검색어']}</span>
+          ${d['워치리스트'] ? '<span class="tag watch">⭐ 관심기업</span>' : ''}
+          <span class="tag kw">${d['직군']||'기타'}</span>
+          <span class="tag loc">${d['검색어']}</span>
           ${d['회사 위치'] ? `<span class="tag loc">📍 ${d['회사 위치']}</span>` : ''}
           ${isNew ? '<span class="tag new">NEW</span>' : ''}
         </div>
       </div>
       <div class="job-right">
-        <span class="date">${dateTxt}</span>
+        <span class="date">${d['점수'] ? d['점수']+'점 · ' : ''}${dateTxt}</span>
+        <div class="mini-actions">
+          <button class="mini-btn ${JOB_STATUS[d['링크']]==='bm'?'on':''}" onclick="toggleStatus('${d['링크']}','bm')" title="북마크">★</button>
+          <button class="mini-btn ${JOB_STATUS[d['링크']]==='ap'?'on':''}" onclick="toggleStatus('${d['링크']}','ap')" title="지원함">✓</button>
+        </div>
         <a class="apply" href="${d['링크']}" target="_blank" rel="noopener">공고 보기</a>
       </div>
     </article>`;
@@ -397,7 +427,7 @@ function render(){
 
 function showMore(){ visible += 12; render(); }
 function resetFilters(){
-  document.querySelectorAll('#src-filters input, #kw-filters input').forEach(i=>i.checked=true);
+  document.querySelectorAll('#src-filters input, #cat-filters input').forEach(i=>i.checked=true);
   document.getElementById('loc-filter').value='';
   document.getElementById('q').value='';
   visible = 12;

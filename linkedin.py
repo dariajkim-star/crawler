@@ -102,12 +102,12 @@ def crawling_data(keyword, max_pages=10, location="South Korea"):
 
 
 if __name__ == "__main__":
-    # 원하는 검색어들
-    keywords = ["AI", "애널리스트", "데이터사이언스", "머신러닝", "ML", "SQL", "openCV"]
+    # 키워드는 config.py에서 직군별로 관리
+    from config import ALL_KEYWORDS, MAX_PAGES
 
     corpus = []
-    for kw in keywords:
-        corpus.extend(crawling_data(kw, max_pages=10))
+    for kw in ALL_KEYWORDS:
+        corpus.extend(crawling_data(kw, max_pages=MAX_PAGES))
 
     df = pd.DataFrame(corpus)
     # 같은 공고가 여러 키워드에 걸리면 중복 -> 링크 기준으로 제거

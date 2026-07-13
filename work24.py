@@ -116,11 +116,12 @@ def crawling_data(keyword, max_pages=10):
 
 
 if __name__ == "__main__":
-    keywords = ["AI", "애널리스트", "데이터사이언스", "머신러닝", "ML", "SQL", "openCV"]
+    # 키워드는 config.py에서 직군별로 관리
+    from config import ALL_KEYWORDS, MAX_PAGES
 
     corpus = []
-    for kw in keywords:
-        corpus.extend(crawling_data(kw, max_pages=10))
+    for kw in ALL_KEYWORDS:
+        corpus.extend(crawling_data(kw, max_pages=MAX_PAGES))
 
     df = pd.DataFrame(corpus)
     df = df.drop_duplicates(subset=["링크"]).reset_index(drop=True)
