@@ -1,4 +1,4 @@
-# 사람인 + 고용24 + LinkedIn 크롤러를 전부 실행하고
+# 사람인 + 고용24 + LinkedIn + WWR + 피플앤잡 크롤러를 전부 실행하고
 # 1) 소스별 csv/json 저장
 # 2) all_jobs.csv / all_jobs.json 으로 통합 저장 (대시보드 job_board.html이 읽는 파일)
 #
@@ -14,6 +14,8 @@ import pandas as pd
 import saramin
 import work24
 import linkedin
+import weworkremotely
+import peoplenjob
 from config import ALL_KEYWORDS, KEYWORD_TO_CATEGORY, MAX_PAGES
 from scoring import is_noise, score_job
 
@@ -27,6 +29,8 @@ SOURCES = [
     ("사람인", saramin, "saramin_result"),
     ("고용24", work24, "work24_result"),
     ("LinkedIn", linkedin, "linkedin_result"),
+    ("WWR", weworkremotely, "weworkremotely_result"),
+    ("피플앤잡", peoplenjob, "peoplenjob_result"),
 ]
 
 
@@ -55,8 +59,8 @@ def run_source(name, module, filename):
 
 
 def main():
-    # 소스 3개를 병렬로 (같은 사이트에 동시 요청하는 게 아니므로 각 사이트 부담은 동일)
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    # 소스들을 병렬로 (같은 사이트에 동시 요청하는 게 아니므로 각 사이트 부담은 동일)
+    with ThreadPoolExecutor(max_workers=len(SOURCES)) as pool:
         futures = [pool.submit(run_source, name, module, filename)
                    for name, module, filename in SOURCES]
         frames = [f.result() for f in futures]
