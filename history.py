@@ -108,6 +108,20 @@ def new_companies_since(days=7, limit=20):
     return rows
 
 
+def weekly_source_counts(days=7):
+    """최근 N일 신규 공고 수 (소스별) + 소스별 누적"""
+    since = time.strftime("%Y-%m-%d", time.localtime(time.time() - days * 86400))
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT source,
+               SUM(CASE WHEN first_seen >= ? THEN 1 ELSE 0 END) AS new_cnt,
+               COUNT(*) AS total_cnt
+        FROM jobs
+        GROUP BY source ORDER BY total_cnt DESC""", (since,)).fetchall()
+    conn.close()
+    return rows
+
+
 def weekly_counts(days=7):
     """최근 N일 신규 공고 수 (직군별)"""
     since = time.strftime("%Y-%m-%d", time.localtime(time.time() - days * 86400))

@@ -21,15 +21,26 @@ from run_and_notify import send_slack  # noqa: E402
 def build_report():
     today = time.strftime("%Y-%m-%d")
     by_cat, week_total, all_time = history.weekly_counts(days=7)
+    by_src = history.weekly_source_counts(days=7)
     new_comps = history.new_companies_since(days=7, limit=20)
     repeats = history.repeat_companies(days=30, limit=15)
 
     lines = [
         f"# JobScope 주간 채용시장 리포트 ({today})",
         "",
-        f"> 누적 수집 공고 {all_time:,}건 · 최근 7일 신규 {week_total:,}건",
+        f"> 누적 수집 공고 {all_time:,}건 · 최근 7일 신규 {week_total:,}건 · 수집 소스 {len(by_src)}곳",
         "",
-        "## 1. 직군별 신규 공고 (최근 7일)",
+        "## 1. 소스별 수집 현황 (최근 7일)",
+        "",
+        "| 출처 | 신규 공고 | 누적 |",
+        "|---|---|---|",
+    ]
+    for src, new_cnt, total_cnt in by_src:
+        lines.append(f"| {src or '기타'} | {new_cnt:,} | {total_cnt:,} |")
+
+    lines += [
+        "",
+        "## 2. 직군별 신규 공고 (최근 7일)",
         "",
         "| 직군 | 신규 공고 |",
         "|---|---|",
@@ -39,7 +50,7 @@ def build_report():
 
     lines += [
         "",
-        "## 2. 이번 주 처음 등장한 회사 (경쟁 적은 신규 포지션 후보)",
+        "## 3. 이번 주 처음 등장한 회사 (경쟁 적은 신규 포지션 후보)",
         "",
     ]
     if new_comps:
@@ -50,7 +61,7 @@ def build_report():
 
     lines += [
         "",
-        "## 3. 반복 채용 회사 Top 15 (최근 30일 — 상시채용/대량채용 시그널)",
+        "## 4. 반복 채용 회사 Top 15 (최근 30일 — 상시채용/대량채용 시그널)",
         "",
         "| 회사 | 공고 수 | 직군 수 |",
         "|---|---|---|",
