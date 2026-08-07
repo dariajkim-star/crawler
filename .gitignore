@@ -7,3 +7,8 @@ crawl_log.txt
 jobs_history.db
 __pycache__/
 *.pyc
+
+# 캡처/도구 산출물
+.playwright-mcp/
+jobscope_v*.png
+.claude/settings.local.json
