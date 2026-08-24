@@ -12,7 +12,8 @@ BASE_DIR = Path(__file__).parent
 os.chdir(BASE_DIR)
 
 # Obsidian 볼트 경로
-OB_VAULT = Path(r"C:\Users\user\Desktop\ob_storage")
+OB_VAULT = Path(r"C:\Users\s0506\OneDrive\바탕 화면\GitHub_Projects\ob_storage\JobScope")
+OB_VAULT.mkdir(parents=True, exist_ok=True)
 
 import history  # noqa: E402
 from run_and_notify import send_slack  # noqa: E402
