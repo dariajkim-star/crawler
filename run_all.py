@@ -37,10 +37,18 @@ SOURCES = [
 def run_source(name, module, filename):
     """크롤러 모듈 하나를 전체 키워드로 실행하고 소스별 파일 저장"""
     rows = []
+    failed = 0
     for i, kw in enumerate(ALL_KEYWORDS, 1):
-        rows.extend(module.crawling_data(kw, max_pages=MAX_PAGES))
-        # 병렬 실행 시 tqdm 진행바가 섞여 보이므로, 읽기 쉬운 완료 로그를 따로 남김
-        print(f"[{name}] '{kw}' 완료 ({i}/{len(ALL_KEYWORDS)})", flush=True)
+        # 사이트가 일시적으로 응답하지 않아도(타임아웃 등) 키워드 하나만 건너뛰고 계속 진행
+        try:
+            rows.extend(module.crawling_data(kw, max_pages=MAX_PAGES))
+            # 병렬 실행 시 tqdm 진행바가 섞여 보이므로, 읽기 쉬운 완료 로그를 따로 남김
+            print(f"[{name}] '{kw}' 완료 ({i}/{len(ALL_KEYWORDS)})", flush=True)
+        except Exception as e:
+            failed += 1
+            print(f"[{name}] '{kw}' 실패 → 건너뜀 ({type(e).__name__}: {e})", flush=True)
+    if failed:
+        print(f"[{name}] 키워드 {failed}/{len(ALL_KEYWORDS)}개 실패", flush=True)
 
     df = pd.DataFrame(rows)
     if df.empty:
@@ -61,9 +69,19 @@ def run_source(name, module, filename):
 def main():
     # 소스들을 병렬로 (같은 사이트에 동시 요청하는 게 아니므로 각 사이트 부담은 동일)
     with ThreadPoolExecutor(max_workers=len(SOURCES)) as pool:
-        futures = [pool.submit(run_source, name, module, filename)
-                   for name, module, filename in SOURCES]
-        frames = [f.result() for f in futures]
+        futures = {pool.submit(run_source, name, module, filename): name
+                   for name, module, filename in SOURCES}
+        frames = []
+        for f, name in futures.items():
+            # 소스 하나가 통째로 죽어도 나머지 소스가 모은 결과는 살린다
+            try:
+                frames.append(f.result())
+            except Exception as e:
+                print(f"[{name}] 소스 전체 실패 → 제외 ({type(e).__name__}: {e})", flush=True)
+
+    frames = [df for df in frames if not df.empty]
+    if not frames:
+        raise RuntimeError("모든 소스 크롤링 실패 — all_jobs 파일을 갱신하지 않음")
 
     merged = pd.concat(frames, ignore_index=True)
 
