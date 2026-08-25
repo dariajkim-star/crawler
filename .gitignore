@@ -4,6 +4,7 @@ slack_token.txt
 
 # 실행 산출물
 crawl_log.txt
+crawl_run.log
 jobs_history.db
 __pycache__/
 *.pyc
