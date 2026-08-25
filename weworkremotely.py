@@ -76,18 +76,29 @@ def parse_jobs(html, keyword):
     return rows
 
 
-def crawling_data(keyword, max_pages=10):
-    """키워드 하나 크롤링. 검색 결과가 단일 페이지라 요청은 1번"""
+def crawling_data(keyword, max_pages=10, retries=3):
+    """키워드 하나 크롤링. 검색 결과가 단일 페이지라 요청은 1번.
+    타임아웃/비200 응답이면 점점 길게 쉬면서 재시도, 끝내 실패하면 흔적을 남기고 빈 리스트."""
     # tqdm은 다른 크롤러와 로그 형태를 맞추기 위한 1스텝 진행바
     for _ in tqdm(range(1), desc=f"WWR '{keyword}' 크롤링중"):
-        try:
-            response = requests.get(BASE_URL, headers=HEADERS,
-                                    params={"term": keyword}, timeout=15)
-            if response.status_code != 200:
-                return []
-            rows = parse_jobs(response.text, keyword)
-        except requests.RequestException:
+        html = None
+        for attempt in range(retries):
+            try:
+                response = requests.get(BASE_URL, headers=HEADERS,
+                                        params={"term": keyword}, timeout=15)
+                if response.status_code == 200:
+                    html = response.text
+                    break
+                print(f"[WWR] '{keyword}' HTTP {response.status_code} — 재시도 {attempt + 1}/{retries}", flush=True)
+                time.sleep(5 * (attempt + 1))
+            except requests.RequestException as e:
+                print(f"[WWR] '{keyword}' 요청 실패({e.__class__.__name__}) — 재시도 {attempt + 1}/{retries}", flush=True)
+                time.sleep(3 * (attempt + 1))
+        if html is None:
+            #단일 요청이라 실패하면 이 키워드 전체가 빠짐 -> 반드시 흔적을 남김
+            print(f"[WWR] '{keyword}' 오류로 수집 실패 (이번 실행에서 이 키워드는 0건)", flush=True)
             return []
+        rows = parse_jobs(html, keyword)
         time.sleep(2)  # 예의는 국룰
     return rows
 

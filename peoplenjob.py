@@ -91,21 +91,36 @@ def parse_jobs(html, keyword):
     return rows
 
 
-def crawling_data(keyword, max_pages=10):
-    all_rows = []
-    for page in tqdm(range(1, max_pages + 1), desc=f"피플앤잡 '{keyword}' 크롤링중"):
+def fetch_page(keyword, page, retries=3):
+    """검색 결과 한 페이지의 html을 받아옴.
+    타임아웃/비200 응답이면 점점 길게 쉬면서 재시도, 끝내 실패하면 None."""
+    for attempt in range(retries):
         try:
             response = requests.get(BASE_URL, headers=HEADERS,
                                     params={"keyword": keyword, "page": page},
                                     timeout=15)
-            if response.status_code != 200:
-                break
-        except requests.RequestException:
+            if response.status_code == 200:
+                return response.text
+            print(f"[피플앤잡] '{keyword}' p{page} HTTP {response.status_code} — 재시도 {attempt + 1}/{retries}", flush=True)
+            time.sleep(5 * (attempt + 1))
+        except requests.RequestException as e:
+            print(f"[피플앤잡] '{keyword}' p{page} 요청 실패({e.__class__.__name__}) — 재시도 {attempt + 1}/{retries}", flush=True)
+            time.sleep(3 * (attempt + 1))
+    return None
+
+
+def crawling_data(keyword, max_pages=10):
+    all_rows = []
+    for page in tqdm(range(1, max_pages + 1), desc=f"피플앤잡 '{keyword}' 크롤링중"):
+        html = fetch_page(keyword, page)
+        if not html:
+            #재시도까지 전부 실패한 오류 -> '결과 끝'과 다르므로 흔적을 남기고 중단
+            print(f"[피플앤잡] '{keyword}' {page}페이지에서 오류로 중단 (수집분 {len(all_rows)}건은 유지)", flush=True)
             break
 
-        rows = parse_jobs(response.text, keyword)
+        rows = parse_jobs(html, keyword)
         if not rows:
-            break  # 더 이상 결과 없음
+            break  # 더 이상 결과 없음 (정상 종료)
 
         all_rows.extend(rows)
         time.sleep(2)  # 예의는 국룰

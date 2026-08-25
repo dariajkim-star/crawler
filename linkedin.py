@@ -34,7 +34,8 @@ HEADERS = {
 
 
 def fetch_page(keyword, start, location="South Korea", retries=3):
-    """한 페이지(공고 25개)의 html을 받아옴. 429 뜨면 잠시 쉬었다가 재시도."""
+    """한 페이지(공고 25개)의 html을 받아옴. 429 뜨면 잠시 쉬었다가 재시도.
+    반환: (html, 사유) — (None, "end")는 정상적인 결과 끝, (None, "error")는 오류로 포기."""
     params = {
         "keywords": keyword,
         "location": location,
@@ -44,17 +45,17 @@ def fetch_page(keyword, start, location="South Korea", retries=3):
         try:
             response = requests.get(BASE_URL, headers=HEADERS,
                                     params=params, timeout=10)
-            # 200 정상 / 400 더 이상 페이지 없음 / 429 요청 과다
+            # 200 정상 / 400 더 이상 페이지 없음 / 그 외(429 과다·403/999 봇차단·5xx)는 쉬었다 재시도
             if response.status_code == 200:
-                return response.text
+                return response.text, "ok"
             if response.status_code == 400:
-                return None  # 결과 끝
-            if response.status_code == 429:
-                time.sleep(5 * (attempt + 1))  # 점점 길게 쉬기
-                continue
-        except requests.RequestException:
-            time.sleep(3)
-    return None
+                return None, "end"  # 결과 끝 (정상)
+            print(f"[LinkedIn] '{keyword}' start={start} HTTP {response.status_code} — 재시도 {attempt + 1}/{retries}", flush=True)
+            time.sleep(5 * (attempt + 1))  # 점점 길게 쉬기
+        except requests.RequestException as e:
+            print(f"[LinkedIn] '{keyword}' start={start} 요청 실패({e.__class__.__name__}) — 재시도 {attempt + 1}/{retries}", flush=True)
+            time.sleep(3 * (attempt + 1))
+    return None, "error"
 
 
 def parse_jobs(html, keyword):
@@ -88,9 +89,12 @@ def crawling_data(keyword, max_pages=10, location="South Korea"):
     """키워드 하나를 max_pages 페이지까지 크롤링"""
     all_rows = []
     for page in tqdm(range(max_pages), desc=f"'{keyword}' 크롤링중"):
-        html = fetch_page(keyword, start=page * 25, location=location)
+        html, why = fetch_page(keyword, start=page * 25, location=location)
         if not html:
-            break  # 더 이상 결과 없음
+            if why == "error":
+                #오류로 포기한 경우는 '결과 끝'과 다르므로 흔적을 남김
+                print(f"[LinkedIn] '{keyword}' {page + 1}페이지에서 오류로 중단 (수집분 {len(all_rows)}건은 유지)", flush=True)
+            break  # end면 더 이상 결과 없음 (정상 종료)
 
         rows = parse_jobs(html, keyword)
         if not rows:

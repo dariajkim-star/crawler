@@ -302,6 +302,12 @@ function toggleStatus(link, type){
 
 const norm = s => (s||'').toLowerCase();
 
+// 크롤링해온 외부 문자열을 innerHTML에 넣기 전 이스케이프 (악성 공고 제목 XSS 방지)
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// 링크는 http/https만 허용 (javascript: 등 위험 스킴 차단)
+const safeUrl = u => /^https?:\/\//i.test(String(u ?? '').trim()) ? String(u).trim() : '';
+
 async function load(){
   try{
     // no-store: 크롤링 직후 새 데이터를 받아야 하므로 브라우저 캐시 금지
@@ -328,14 +334,14 @@ function buildFilters(){
   const srcCount = {};
   DATA.forEach(d => srcCount[d['출처']||'기타'] = (srcCount[d['출처']||'기타']||0)+1);
   document.getElementById('src-filters').innerHTML = Object.entries(srcCount).map(([k,c]) =>
-    `<label class="check"><input type="checkbox" data-f="src" value="${k}" checked onchange="render()">${k}<span class="cnt">${c.toLocaleString()}</span></label>`
+    `<label class="check"><input type="checkbox" data-f="src" value="${esc(k)}" checked onchange="render()">${esc(k)}<span class="cnt">${c.toLocaleString()}</span></label>`
   ).join('');
 
   const catCount = {};
   DATA.forEach(d => catCount[d['직군']||'기타'] = (catCount[d['직군']||'기타']||0)+1);
   const box = document.getElementById('cat-filters');
   box.innerHTML = Object.entries(catCount).map(([k,c]) =>
-    `<label class="check"><input type="checkbox" value="${k}" checked onchange="render()">${k}<span class="cnt">${c.toLocaleString()}</span></label>`
+    `<label class="check"><input type="checkbox" value="${esc(k)}" checked onchange="render()">${esc(k)}<span class="cnt">${c.toLocaleString()}</span></label>`
   ).join('');
 
   // hero chips (재로드 시 중복 방지: 기존 칩 제거) — 직군 이름으로 표시
@@ -396,28 +402,29 @@ function render(){
     const color = AVATAR_COLORS[[...name].reduce((a,c)=>a+c.charCodeAt(0),0) % AVATAR_COLORS.length];
     const isNew = d['게시일'] && new Date(d['게시일']) >= week;
     const src = d['출처']||'기타';
+    const link = safeUrl(d['링크']);
     const dateTxt = d['게시일'] || (d['마감일'] ? '마감 '+d['마감일'] : '');
     return `<article class="job">
-      <div class="avatar" style="background:${color}">${name[0].toUpperCase()}</div>
+      <div class="avatar" style="background:${color}">${esc(name[0].toUpperCase())}</div>
       <div class="job-body">
-        <div class="job-title"><a href="${d['링크']}" target="_blank" rel="noopener">${d['공고 이름']}</a></div>
-        <div class="job-sub">${name}</div>
+        <div class="job-title"><a href="${esc(link)}" target="_blank" rel="noopener">${esc(d['공고 이름'])}</a></div>
+        <div class="job-sub">${esc(name)}</div>
         <div class="job-meta">
-          <span class="tag src" style="background:${SRC_COLORS[src]||'#667085'}">${src}</span>
+          <span class="tag src" style="background:${SRC_COLORS[src]||'#667085'}">${esc(src)}</span>
           ${d['워치리스트'] ? '<span class="tag watch">⭐ 관심기업</span>' : ''}
-          <span class="tag kw">${d['직군']||'기타'}</span>
-          <span class="tag loc">${d['검색어']}</span>
-          ${d['회사 위치'] ? `<span class="tag loc">📍 ${d['회사 위치']}</span>` : ''}
+          <span class="tag kw">${esc(d['직군']||'기타')}</span>
+          <span class="tag loc">${esc(d['검색어'])}</span>
+          ${d['회사 위치'] ? `<span class="tag loc">📍 ${esc(d['회사 위치'])}</span>` : ''}
           ${isNew ? '<span class="tag new">NEW</span>' : ''}
         </div>
       </div>
       <div class="job-right">
-        <span class="date">${d['점수'] ? d['점수']+'점 · ' : ''}${dateTxt}</span>
+        <span class="date">${d['점수'] ? esc(d['점수'])+'점 · ' : ''}${esc(dateTxt)}</span>
         <div class="mini-actions">
-          <button class="mini-btn ${JOB_STATUS[d['링크']]==='bm'?'on':''}" onclick="toggleStatus('${d['링크']}','bm')" title="북마크">★</button>
-          <button class="mini-btn ${JOB_STATUS[d['링크']]==='ap'?'on':''}" onclick="toggleStatus('${d['링크']}','ap')" title="지원함">✓</button>
+          <button class="mini-btn ${JOB_STATUS[d['링크']]==='bm'?'on':''}" data-act="bm" data-link="${esc(d['링크']||'')}" title="북마크">★</button>
+          <button class="mini-btn ${JOB_STATUS[d['링크']]==='ap'?'on':''}" data-act="ap" data-link="${esc(d['링크']||'')}" title="지원함">✓</button>
         </div>
-        <a class="apply" href="${d['링크']}" target="_blank" rel="noopener">공고 보기</a>
+        <a class="apply" href="${esc(link)}" target="_blank" rel="noopener">공고 보기</a>
       </div>
     </article>`;
   }).join('');
@@ -434,6 +441,13 @@ function resetFilters(){
   render();
 }
 document.getElementById('q').addEventListener('keydown', e=>{ if(e.key==='Enter') render(); });
+
+// 북마크/지원함 버튼: 인라인 onclick 대신 위임 방식
+// (링크 문자열을 onclick 속성에 직접 박으면 따옴표 하나로 코드 실행이 가능해지므로)
+document.getElementById('jobs').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-act]');
+  if(btn) toggleStatus(btn.dataset.link, btn.dataset.act);
+});
 
 /* ── 크롤링 실행 버튼 (server.py 필요) ─────────────── */
 let crawlTimer = null;

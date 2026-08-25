@@ -36,22 +36,45 @@ HEADERS = {
     }
 
 
+BASE_URL = 'https://www.saramin.co.kr/zf_user/search'
+
+
+def fetch_page(search_word, page, retries=3):
+    """검색 결과 한 페이지의 html을 받아옴.
+    타임아웃/차단(403·429)/서버 오류면 점점 길게 쉬면서 재시도, 끝내 실패하면 None."""
+    for attempt in range(retries):
+        try:
+            #recruitPage=N 으로 페이지 넘김
+            response = requests.get(BASE_URL, headers=HEADERS,
+                                    params={'searchword': search_word,
+                                            'recruitPage': page},
+                                    timeout=10)
+            if response.status_code == 200:
+                return response.text
+            #403/429(차단·과다 요청)·5xx: 빈 화면이 와도 조용히 넘어가지 말고 알리고 재시도
+            print(f"[사람인] '{search_word}' p{page} HTTP {response.status_code} — 재시도 {attempt + 1}/{retries}", flush=True)
+            time.sleep(5 * (attempt + 1))
+        except requests.RequestException as e:
+            print(f"[사람인] '{search_word}' p{page} 요청 실패({e.__class__.__name__}) — 재시도 {attempt + 1}/{retries}", flush=True)
+            time.sleep(3 * (attempt + 1))
+    return None
+
+
 #깔끔한 정리를 위해 함수로 만듦
 #검색어 + 페이지수를 변수로
 def crawling_data(search_word, max_pages=10):
 
-    base_url = 'https://www.saramin.co.kr/zf_user/search'
     rows = []
 
     for page in tqdm(range(1, max_pages + 1), desc=f"사람인 '{search_word}' 크롤링중"):
 
-        #recruitPage=N 으로 페이지 넘김
-        response = requests.get(base_url, headers=HEADERS,
-                                params={'searchword': search_word,
-                                        'recruitPage': page},
-                                timeout=10)
+        html = fetch_page(search_word, page)
+        if html is None:
+            #재시도까지 전부 실패 -> 이 키워드는 여기서 멈추되, 지금까지 모은 rows는 살려서 반환
+            print(f"[사람인] '{search_word}' {page}페이지에서 오류로 중단 (수집분 {len(rows)}건은 유지)", flush=True)
+            break
 
-        soup = BeautifulSoup(response.text, 'html.parser')
+        soup = BeautifulSoup(html, 'html.parser')
         items = soup.select('div.item_recruit')
         if not items:
             break  #더 이상 공고 없음
@@ -120,7 +143,11 @@ if __name__ == '__main__':
 
     corpus = []
     for kw in ALL_KEYWORDS:
-        corpus.extend(crawling_data(kw, max_pages=MAX_PAGES))
+        #키워드 하나가 죽어도 그때까지 모은 corpus는 저장까지 가도록 보호
+        try:
+            corpus.extend(crawling_data(kw, max_pages=MAX_PAGES))
+        except Exception as e:
+            print(f"'{kw}' 크롤링 실패({e.__class__.__name__}: {e}) — 건너뛰고 계속", flush=True)
 
     df = pd.DataFrame(corpus)
     #같은 공고가 여러 키워드에 걸리면 중복 -> 링크 기준 제거
