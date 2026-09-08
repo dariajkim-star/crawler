@@ -35,7 +35,7 @@
                        │                      server.py (FastAPI, 버튼 크롤링)
                        ▼
        ┌───────────────────────────────┐
-       │      run_and_notify.py        │  매일 17:00 스케줄러
+       │      run_and_notify.py        │  매일 16:00 스케줄러
        │  history.py → jobs_history.db │  first_seen/last_seen/seen_count
        │  jd_match.py (Top 12건 JD 열람)│  → 신규공고·신규회사 판정
        │  → Slack (웹훅/토큰)           │
@@ -70,7 +70,7 @@
 | `scoring.py` | 공고 점수화 (직군 가중치 + 스킬/워치리스트/신규/마감임박 가점) + 노이즈 판정 |
 | `history.py` | **이력 DB** (`jobs_history.db`, SQLite) — 신규 공고/처음 보는 회사/반복 채용 분석 |
 | `jd_match.py` | Top 공고의 JD 상세를 열어 내 스킬 매칭 확인 |
-| `run_and_notify.py` | 크롤링 + 이력 적재 + **슬랙 알림 (워치리스트 신규 + 오늘의 Top 10)** — 매일 17:00 |
+| `run_and_notify.py` | 크롤링 + 이력 적재 + **슬랙 알림 (워치리스트 신규 + 오늘의 Top 10)** — 매일 16:00 |
 | `weekly_report.py` | **주간 리포트** → Obsidian 저장 + 슬랙 알림 — 매주 월 09:00 |
 | `server.py` | 대시보드 서버 (FastAPI) — 웹에서 버튼 한 번으로 전체 크롤링 |
 | `job_board.html` | 대시보드 — 출처/직군/지역/내상태 필터, 추천순 정렬, ⭐관심기업, 북마크/지원함 |
@@ -112,12 +112,13 @@ python server.py
 - **[🔄 전체 크롤링 실행]** 버튼 → 진행상태 실시간 표시 → 완료 시 자동 새로고침
 - API: `POST /api/crawl?pages=10`, `GET /api/crawl/status` ([API 명세서](docs/API명세서.md))
 
-### 3. 매일 17:00 자동 크롤링 + 슬랙 알림
-Windows 작업 스케줄러에 `JobScope_Daily_Crawl` 작업이 등록되어 있음 (매일 17:00 `run_and_notify.py` 실행).
+### 3. 매일 16:00 자동 크롤링 + 슬랙 알림
+Windows 작업 스케줄러에 `JobScope_Daily_Crawl_16` 작업이 등록되어 있음 (매일 16:00 `run_and_notify.py` 실행, 절전 중이면 깨워서 실행).
+구버전 `JobScope_Daily_Crawl`(17:00)이 남아 있어도 스크립트가 같은 날 이중 실행을 자동으로 건너뜀.
 
-**슬랙 알림 설정 — 완료됨 (2026-07-13):**
-- 워크스페이스에 "JobScope 알리미" 앱(A0BHP0LSSG0) 생성·설치 완료, Webhook URL이 `slack_webhook.txt`에 저장됨
-- 다른 채널로 바꾸려면: https://api.slack.com/apps/A0BHP0LSSG0 → Incoming Webhooks → Add New Webhook → 새 URL을 `slack_webhook.txt`에 교체
+**슬랙 알림 설정 — 완료됨 (2026-09-08, 새 컴퓨터에서 앱 재생성):**
+- 워크스페이스에 슬랙 앱(A0BV72053RV) 생성·설치 완료, Webhook URL이 `slack_webhook.txt`에 저장됨 (git 제외)
+- 다른 채널로 바꾸려면: https://api.slack.com/apps/A0BV72053RV → Incoming Webhooks → Add New Webhook → 새 URL을 `slack_webhook.txt`에 교체
 - 코드의 전송 우선순위: `slack_webhook.txt`(웹훅) → `slack_token.txt`(토큰, chat.postMessage) → 미설정 시 알림 생략
 
 알림 내용: 총 수집 건수, 소스별 건수, **오늘 새로 뜬 공고 N건 + 미리보기 5건(링크)**. 실패 시에도 에러 알림이 옴.
@@ -152,12 +153,13 @@ pip install requests beautifulsoup4 pandas tqdm fastapi uvicorn
 - `CATEGORY_WEIGHTS` — 직군 우선순위
 - `EXCLUDE_TITLE_KEYWORDS` — 노이즈 제외어 (보험영업 등)
 
-**매일 17:00 슬랙 알림**: 총건수 → ⭐관심 회사 신규 → 🏆오늘의 Top 10 (점수 + JD 스킬 매칭)
+**매일 16:00 슬랙 알림**: 총건수 → ⭐관심 회사 신규 → 🏆오늘의 Top 10 (점수 + JD 스킬 매칭)
 **매주 월 09:00 주간 리포트**: 직군별 추이 · 처음 등장한 회사(경쟁 적은 포지션) · 반복 채용 회사 → Obsidian `JobScope_주간리포트_날짜.md`
 
 이력 DB(`jobs_history.db`)에 모든 공고의 최초/최종 목격일이 누적되므로, 데이터가 쌓일수록 신규 탐지와 주간 리포트가 정확해짐.
 
 ## 변경 이력
+- **2026-09-08 (v1.6)**: 새 컴퓨터 이전 후 슬랙 웹훅 재설정 · 일일 크롤링 17:00 → **16:00** (`JobScope_Daily_Crawl_16`, WakeToRun) · 같은 날 이중 실행 방지 가드(`--force`로 해제).
 - **2026-08-06 (v1.5)**: 크롤러 2종 추가 — `weworkremotely.py`(해외 원격직), `peoplenjob.py`(외국계기업). 소스 3개 → **5개 병렬**. 노이즈가 많던 범용 키워드 6개(채권/CPA/회계사/회계법인/컨설팅/컨설턴트) 제외 → 직군 9→8, 키워드 47→41. README에 시스템 아키텍처·크롤러 메트릭스 추가.
 - **2026-07-13 (v1.4)**: 구직 효율화 7종 — ①관심회사 워치리스트 ②공고 스코어링+슬랙 Top 10 ③SQLite 이력DB(신규/반복채용 분석) ④JD 상세 스킬 매칭 ⑤노이즈 블랙리스트 ⑥주간 리포트→Obsidian(월 09:00) ⑦대시보드 북마크/지원함+추천순 정렬. 사람인 링크 rec_idx 정규화로 중복 수집 버그 수정(-3,739건).
 - **2026-07-13 (v1.3)**: 키워드 확장 (7개 → 직군 8개 × 36개, `config.py` 분리) · `직군` 컬럼/필터 추가 · **소스 3개 병렬 크롤링(~3배 빠름)** · `run_and_notify.py` + Windows 작업 스케줄러(매일 17:00) + 슬랙 알림(신규 공고 diff) · 개발명세서/API명세서 작성

@@ -1,4 +1,4 @@
-# 매일 오후 5시 스케줄러가 실행하는 스크립트
+# 매일 오후 4시 스케줄러가 실행하는 스크립트 (JobScope_Daily_Crawl_16)
 # 1) 크롤링 -> 이력DB(jobs_history.db)에 적재 -> 신규 공고/신규 회사 계산
 # 2) 스코어링 -> 워치리스트 신규 + 오늘의 Top 10을 슬랙으로 전송
 # 3) Top 공고는 JD 상세를 열어 내 스킬 매칭까지 표시
@@ -16,6 +16,7 @@
 #     - 주의: xoxe.xoxp 회전 토큰은 12시간 뒤 만료됨 -> 장기 운영은 웹훅 권장
 #
 # 수동 실행: python run_and_notify.py
+# 같은 날 이미 완주한 실행이 있으면 건너뜀 (--force 로 강제 실행)
 
 import json
 import os
@@ -31,6 +32,14 @@ os.chdir(BASE_DIR)  # 작업 스케줄러는 cwd가 System32라서 고정 필요
 ALL_JOBS = BASE_DIR / "all_jobs.json"
 WEBHOOK_FILE = BASE_DIR / "slack_webhook.txt"
 TOKEN_FILE = BASE_DIR / "slack_token.txt"
+
+
+def already_ran_today():
+    """all_jobs.json이 오늘 갱신됐으면 True — 스케줄러 작업이 2개 등록된 경우의 이중 실행 방지."""
+    if not ALL_JOBS.exists():
+        return False
+    from datetime import date, datetime
+    return datetime.fromtimestamp(ALL_JOBS.stat().st_mtime).date() == date.today()
 
 
 def get_webhook_url():
@@ -145,6 +154,9 @@ def main(dry=False):
 
 if __name__ == "__main__":
     import sys
+    if "--dry" not in sys.argv and "--force" not in sys.argv and already_ran_today():
+        print("오늘 이미 크롤링을 완주했으므로 건너뜁니다 (--force 로 강제 실행 가능)")
+        sys.exit(0)
     try:
         main(dry="--dry" in sys.argv)
     except Exception:
