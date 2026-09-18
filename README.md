@@ -113,8 +113,24 @@ python server.py
 - API: `POST /api/crawl?pages=10`, `GET /api/crawl/status` ([API 명세서](docs/API명세서.md))
 
 ### 3. 매일 16:00 자동 크롤링 + 슬랙 알림
-Windows 작업 스케줄러에 `JobScope_Daily_Crawl_16` 작업이 등록되어 있음 (매일 16:00 `run_and_notify.py` 실행, 절전 중이면 깨워서 실행).
-구버전 `JobScope_Daily_Crawl`(17:00)이 남아 있어도 스크립트가 같은 날 이중 실행을 자동으로 건너뜀.
+Windows 작업 스케줄러에 `JobScope_Daily_Crawl_16` 작업이 등록되어 있음 (매일 16:00 `run_and_notify.py` 실행).
+
+**작업별로 로그 파일을 분리해야 한다.** cmd의 `>>` 리다이렉션은 파일을 독점으로 열기 때문에,
+여러 작업이 같은 로그 파일을 쓰도록 등록돼 있으면 동시에 떴을 때 늦게 연 쪽이
+**출력 한 줄 없이 종료코드 1로 죽는다.** PC를 껐다 켜서 밀린 작업이 한꺼번에 보충 실행될 때 실제로 발생한다.
+
+| 작업 | 로그 파일 |
+|---|---|
+| `JobScope_Daily_Crawl_16` (매일 16:00) | `logs/daily_crawl.log` |
+| `JobScope_Weekly_Report` (월 09:00) | `crawl_log.txt` |
+| `JobScope_Daily_Crawl` (구 17:00, 삭제 예정) | `crawl_log.txt` |
+
+이와 별개로 `run_and_notify.py`는 실행 이력을 **`crawl_history.log`에 한 줄씩 직접** 기록한다
+(파이썬 append는 공유 모드라 동시 실행에도 안전). 크롤링이 돌았는지 여부는 이 파일만 보면 된다.
+
+**이중 실행 방지 2단:**
+1. `run_and_notify.lock` 파일 잠금 — 다른 크롤링이 실행 중이면 즉시 종료 (잠금은 프로세스 종료 시 OS가 자동 해제)
+2. `all_jobs.json`이 오늘 갱신됐으면 종료 (`--force`로 해제)
 
 **슬랙 알림 설정 — 완료됨 (2026-09-08, 새 컴퓨터에서 앱 재생성):**
 - 워크스페이스에 슬랙 앱(A0BV72053RV) 생성·설치 완료, Webhook URL이 `slack_webhook.txt`에 저장됨 (git 제외)
@@ -159,6 +175,7 @@ pip install requests beautifulsoup4 pandas tqdm fastapi uvicorn
 이력 DB(`jobs_history.db`)에 모든 공고의 최초/최종 목격일이 누적되므로, 데이터가 쌓일수록 신규 탐지와 주간 리포트가 정확해짐.
 
 ## 변경 이력
+- **2026-09-18 (v1.7)**: 스케줄러 작업이 동시에 떠서 일일 크롤링이 조용히 죽던 문제 수정 — **작업별 로그 파일 분리** · `run_and_notify.lock` 동시 실행 잠금 · 실행 이력을 `crawl_history.log`에 직접 기록(공유 모드).
 - **2026-09-08 (v1.6)**: 새 컴퓨터 이전 후 슬랙 웹훅 재설정 · 일일 크롤링 17:00 → **16:00** (`JobScope_Daily_Crawl_16`, WakeToRun) · 같은 날 이중 실행 방지 가드(`--force`로 해제).
 - **2026-08-06 (v1.5)**: 크롤러 2종 추가 — `weworkremotely.py`(해외 원격직), `peoplenjob.py`(외국계기업). 소스 3개 → **5개 병렬**. 노이즈가 많던 범용 키워드 6개(채권/CPA/회계사/회계법인/컨설팅/컨설턴트) 제외 → 직군 9→8, 키워드 47→41. README에 시스템 아키텍처·크롤러 메트릭스 추가.
 - **2026-07-13 (v1.4)**: 구직 효율화 7종 — ①관심회사 워치리스트 ②공고 스코어링+슬랙 Top 10 ③SQLite 이력DB(신규/반복채용 분석) ④JD 상세 스킬 매칭 ⑤노이즈 블랙리스트 ⑥주간 리포트→Obsidian(월 09:00) ⑦대시보드 북마크/지원함+추천순 정렬. 사람인 링크 rec_idx 정규화로 중복 수집 버그 수정(-3,739건).

@@ -17,11 +17,17 @@
 #
 # 수동 실행: python run_and_notify.py
 # 같은 날 이미 완주한 실행이 있으면 건너뜀 (--force 로 강제 실행)
+# 다른 크롤링 프로세스가 돌고 있으면 잠금에 걸려 즉시 종료 (동시 실행 방지)
+#
+# 로그
+#   crawl_history.log : 실행 이력 한 줄 요약 (이 스크립트가 직접 기록, 동시 실행에 안전)
+#   logs/daily_crawl.log : 스케줄러가 남기는 표준출력 전문 (작업별로 파일 분리)
 
 import json
 import os
 import time
 import traceback
+from datetime import date, datetime
 from pathlib import Path
 
 import requests
@@ -32,13 +38,57 @@ os.chdir(BASE_DIR)  # 작업 스케줄러는 cwd가 System32라서 고정 필요
 ALL_JOBS = BASE_DIR / "all_jobs.json"
 WEBHOOK_FILE = BASE_DIR / "slack_webhook.txt"
 TOKEN_FILE = BASE_DIR / "slack_token.txt"
+RUN_LOG = BASE_DIR / "crawl_history.log"
+LOCK_FILE = BASE_DIR / "run_and_notify.lock"
+
+_lock_fp = None  # 잠금 핸들 — 프로세스가 끝날 때까지 살려둬야 한다
+
+
+def log_run(msg):
+    """실행 이력을 crawl_history.log에 한 줄로 남긴다.
+
+    파이썬의 append 열기는 공유 모드라 여러 프로세스가 동시에 써도 실패하지 않는다.
+    반면 cmd의 '>>' 리다이렉션은 파일을 독점으로 열기 때문에, 작업 여러 개가 같은
+    로그 파일을 쓰도록 등록돼 있으면 늦게 연 쪽이 출력 한 줄 없이 종료코드 1로 죽는다.
+    (2026-09-18 실제 사고: 보충 실행으로 작업 3개가 동시에 떠서 일일 크롤링 2개가 이렇게 죽음)
+    """
+    line = f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {msg}"
+    print(line, flush=True)
+    try:
+        with open(RUN_LOG, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass  # 로그 실패로 크롤링을 죽이지 않는다
+
+
+def acquire_single_run_lock():
+    """동시 실행 방지 잠금. 스케줄러 작업이 여러 개 등록돼 있어도 크롤링은 한 번만 돈다.
+
+    잠금은 프로세스가 끝날 때 OS가 자동 해제하므로, 비정상 종료돼도 잠금이 남지 않는다.
+    """
+    global _lock_fp
+    try:
+        import msvcrt
+    except ImportError:
+        return True  # Windows가 아니면 잠금 생략
+    try:
+        fp = open(LOCK_FILE, "a+")
+    except OSError:
+        return True  # 잠금 파일을 못 열면 잠금 없이 진행
+    try:
+        fp.seek(0)
+        msvcrt.locking(fp.fileno(), msvcrt.LK_NBLCK, 1)
+    except OSError:
+        fp.close()
+        return False
+    _lock_fp = fp
+    return True
 
 
 def already_ran_today():
-    """all_jobs.json이 오늘 갱신됐으면 True — 스케줄러 작업이 2개 등록된 경우의 이중 실행 방지."""
+    """all_jobs.json이 오늘 갱신됐으면 True — 같은 날 이중 크롤링 방지."""
     if not ALL_JOBS.exists():
         return False
-    from datetime import date, datetime
     return datetime.fromtimestamp(ALL_JOBS.stat().st_mtime).date() == date.today()
 
 
@@ -154,14 +204,24 @@ def main(dry=False):
 
 if __name__ == "__main__":
     import sys
-    if "--dry" not in sys.argv and "--force" not in sys.argv and already_ran_today():
-        print("오늘 이미 크롤링을 완주했으므로 건너뜁니다 (--force 로 강제 실행 가능)")
-        sys.exit(0)
+
+    dry = "--dry" in sys.argv
+    if not dry:
+        if not acquire_single_run_lock():
+            log_run("건너뜀 — 다른 크롤링 프로세스가 이미 실행 중")
+            sys.exit(0)
+        if "--force" not in sys.argv and already_ran_today():
+            log_run("건너뜀 — 오늘 이미 크롤링을 완주함 (--force 로 강제 실행 가능)")
+            sys.exit(0)
+
+    log_run("시작" + (" (--dry)" if dry else ""))
     try:
-        main(dry="--dry" in sys.argv)
+        main(dry=dry)
+        log_run("완료")
     except Exception:
         # 크롤링이 터져도 슬랙으로 알림
         err = traceback.format_exc()
         print(err)
+        log_run("실패 — " + err.strip().splitlines()[-1][:200])
         send_slack(f":rotating_light: *JobScope 크롤링 실패*\n```{err[-500:]}```")
         raise
