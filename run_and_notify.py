@@ -25,6 +25,7 @@
 
 import json
 import os
+import re
 import time
 import traceback
 from datetime import date, datetime
@@ -85,11 +86,79 @@ def acquire_single_run_lock():
     return True
 
 
-def already_ran_today():
-    """all_jobs.json이 오늘 갱신됐으면 True — 같은 날 이중 크롤링 방지."""
-    if not ALL_JOBS.exists():
-        return False
-    return datetime.fromtimestamp(ALL_JOBS.stat().st_mtime).date() == date.today()
+def release_single_run_lock():
+    """잠금을 명시적으로 돌려준다 (잠금 보유 여부만 확인하고 빠질 때 사용)."""
+    global _lock_fp
+    if _lock_fp is None:
+        return
+    try:
+        import msvcrt
+
+        _lock_fp.seek(0)
+        msvcrt.locking(_lock_fp.fileno(), msvcrt.LK_UNLCK, 1)
+    except (ImportError, OSError):
+        pass
+    try:
+        _lock_fp.close()
+    except OSError:
+        pass
+    _lock_fp = None
+
+
+def crawl_in_progress():
+    """지금 다른 크롤링 프로세스가 돌고 있으면 True. 잡은 잠금은 즉시 돌려준다."""
+    if not acquire_single_run_lock():
+        return True
+    release_single_run_lock()
+    return False
+
+
+def last_run_status():
+    """crawl_history.log에서 마지막 '실행'의 (날짜, 상태)를 읽는다.
+
+    상태는 '완료' | '실패' | '시작'(종료 기록 없이 끊김) 중 하나.
+    '건너뜀'·'경고'는 실행이 아니므로 건너뛰고 더 거슬러 올라간다.
+    """
+    if not RUN_LOG.exists():
+        return None, None
+    try:
+        lines = RUN_LOG.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None, None
+    for line in reversed(lines):
+        m = re.match(r"\[(\d{4}-\d{2}-\d{2}) [\d:]+\]\s*(\S+)", line)
+        if not m:
+            continue
+        day, word = m.group(1), m.group(2)
+        for state in ("완료", "실패", "시작"):
+            if word.startswith(state):
+                return day, state
+    return None, None
+
+
+def completed_today():
+    """오늘 '완료'까지 간 실행이 있으면 True — 같은 날 이중 크롤링 방지.
+
+    파일 수정 시각으로 판정하면, 부분 실패해서 망가진 결과물도 '오늘 갱신됨'으로
+    보여 그날 재실행이 통째로 막힌다. 완주 성공 기록으로만 판정한다.
+    """
+    day, status = last_run_status()
+    return status == "완료" and day == date.today().isoformat()
+
+
+def report_interrupted_run():
+    """직전 실행이 '시작'만 남기고 끊겼으면 기록하고 알린다.
+
+    반드시 잠금을 잡은 뒤에 호출해야 한다. 잠금을 잡았다는 것은 지금 돌고 있는
+    크롤링이 없다는 뜻이고, 그런데도 마지막 기록이 '시작'이면 직전 실행이
+    절전·종료 등으로 죽은 것이다. 예전에는 이런 실행이 아무 흔적도 남기지 않았다.
+    """
+    day, status = last_run_status()
+    if status != "시작":
+        return
+    msg = f"직전 실행({day})이 완료 기록 없이 중단됨 (PC 절전·종료 추정)"
+    log_run("경고 — " + msg)
+    send_slack(f":warning: *JobScope* {msg}")
 
 
 def get_webhook_url():
@@ -183,6 +252,16 @@ def main(dry=False):
         f"총 *{len(merged):,}건* ({src_txt}) · :new: 신규 *{len(new_links):,}건* · 처음 보는 회사 *{len(new_companies):,}곳*",
     ]
 
+    # 부분 실패를 알림에서 볼 수 있게 한다. 예전에는 41개 키워드 중 30개가 실패한
+    # 실행과 완전 성공한 실행이 알림상 완전히 똑같아 보였다.
+    dead = merged.attrs.get("dead_sources") or []
+    failures = {k: v for k, v in (merged.attrs.get("failures") or {}).items() if v}
+    if dead:
+        lines.append(f":rotating_light: 수집 0건 소스: *{', '.join(dead)}* — 차단 의심")
+    if failures:
+        fail_txt = " · ".join(f"{k} {v}개" for k, v in failures.items())
+        lines.append(f":warning: 실패한 키워드: {fail_txt}")
+
     if watch_new:
         lines.append(f"\n:star: *관심 회사 신규 공고 {len(watch_new)}건*")
         for r in sorted(watch_new, key=lambda x: x["점수"], reverse=True)[:5]:
@@ -200,6 +279,7 @@ def main(dry=False):
 
     lines.append("\n대시보드 → http://localhost:8010")
     send_slack("\n".join(lines))
+    return merged
 
 
 if __name__ == "__main__":
@@ -210,14 +290,16 @@ if __name__ == "__main__":
         if not acquire_single_run_lock():
             log_run("건너뜀 — 다른 크롤링 프로세스가 이미 실행 중")
             sys.exit(0)
-        if "--force" not in sys.argv and already_ran_today():
+        # 잠금을 잡은 뒤에 확인해야 "돌고 있는 중"과 "죽은 채 방치됨"이 구분된다
+        report_interrupted_run()
+        if "--force" not in sys.argv and completed_today():
             log_run("건너뜀 — 오늘 이미 크롤링을 완주함 (--force 로 강제 실행 가능)")
             sys.exit(0)
 
     log_run("시작" + (" (--dry)" if dry else ""))
     try:
-        main(dry=dry)
-        log_run("완료")
+        merged = main(dry=dry)
+        log_run(f"완료 — {len(merged):,}건 저장" if merged is not None else "완료")
     except Exception:
         # 크롤링이 터져도 슬랙으로 알림
         err = traceback.format_exc()

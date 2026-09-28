@@ -7,6 +7,7 @@ crawl_log.txt
 crawl_run.log
 crawl_history.log
 logs/
+backups/
 run_and_notify.lock
 jobs_history.db
 __pycache__/

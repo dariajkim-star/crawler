@@ -16,8 +16,12 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
+from run_and_notify import acquire_single_run_lock, release_single_run_lock
+
 BASE_DIR = Path(__file__).parent
-LOG_FILE = BASE_DIR / "crawl_log.txt"
+# 작업 스케줄러가 쓰는 로그와 분리한다. 예전엔 crawl_log.txt를 "w"로 열어
+# 주간 리포트가 남긴 기록까지 통째로 날렸다.
+LOG_FILE = BASE_DIR / "logs" / "dashboard_crawl.log"
 
 app = FastAPI(title="JobScope")
 
@@ -42,28 +46,42 @@ state = {
 
 
 def run_crawl(pages):
-    """run_all.py를 서브프로세스로 실행 (출력은 crawl_log.txt에 기록)"""
+    """run_all.py를 서브프로세스로 실행. 잠금은 호출한 쪽이 이미 잡아뒀다."""
     state.update(running=True,
                  started_at=time.strftime("%Y-%m-%d %H:%M:%S"),
                  finished_at=None, returncode=None)
 
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "MAX_PAGES": str(pages)}
-    with open(LOG_FILE, "w", encoding="utf-8") as f:
-        proc = subprocess.run([sys.executable, "run_all.py"],
-                              cwd=BASE_DIR, env=env,
-                              stdout=f, stderr=subprocess.STDOUT)
-
-    state.update(running=False,
-                 finished_at=time.strftime("%Y-%m-%d %H:%M:%S"),
-                 returncode=proc.returncode)
+    try:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(LOG_FILE, "w", encoding="utf-8") as f:
+            proc = subprocess.run([sys.executable, "run_all.py"],
+                                  cwd=BASE_DIR, env=env,
+                                  stdout=f, stderr=subprocess.STDOUT)
+        returncode = proc.returncode
+    finally:
+        # 잠금을 확실히 돌려줘야 다음 스케줄 크롤링이 막히지 않는다
+        release_single_run_lock()
+        state.update(running=False,
+                     finished_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+    state.update(returncode=returncode)
 
 
 @app.post("/api/crawl")
 def start_crawl(pages: int = 10):
-    """버튼 한 번 -> 사람인 + 고용24 + LinkedIn 전부 크롤링"""
+    """버튼 한 번 -> 전체 소스 크롤링.
+
+    예전에는 run_all.py를 그냥 띄워서 동시 실행 잠금을 건너뛰었다. 스케줄 크롤링이
+    도는 중에 버튼을 누르면 두 프로세스가 같은 CSV를 동시에 써서 결과가 섞였다.
+    """
     if state["running"]:
         return JSONResponse({"ok": False, "message": "이미 크롤링이 돌고 있어요"},
                             status_code=409)
+
+    if not acquire_single_run_lock():
+        return JSONResponse(
+            {"ok": False, "message": "스케줄 크롤링이 실행 중이라 지금은 시작할 수 없어요"},
+            status_code=409)
 
     threading.Thread(target=run_crawl, args=(pages,), daemon=True).start()
     return {"ok": True, "message": f"크롤링 시작 (키워드당 최대 {pages}페이지)"}
