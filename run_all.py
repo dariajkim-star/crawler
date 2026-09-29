@@ -72,6 +72,23 @@ def backup_previous():
         print(f"백업 실패 → 계속 진행 ({type(e).__name__}: {e})", flush=True)
 
 
+def dedup_by_link(df, label):
+    """링크 없는 행을 세어서 버린 뒤, 링크 기준으로 중복 제거.
+
+    drop_duplicates(subset=["링크"])만 쓰면 빈 링크끼리 서로 중복으로 취급돼
+    첫 행만 남고 나머지가 로그 한 줄 없이 사라진다. 링크가 없는 공고는 열 수도
+    없고 history.ingest도 건너뛰므로, 몇 건을 왜 버렸는지 남기고 먼저 제외한다.
+    """
+    if df.empty or "링크" not in df.columns:
+        return df
+    link = df["링크"].fillna("").astype(str).str.strip()
+    missing = int((link == "").sum())
+    if missing:
+        print(f"[{label}] 링크 없는 공고 {missing}건 제외 (파싱 실패 추정)", flush=True)
+    df = df[link != ""]
+    return df.drop_duplicates(subset=["링크"]).reset_index(drop=True)
+
+
 def safe_score(row):
     """한 행의 스코어링 실패가 그날 크롤링 전체를 날리지 않도록 감싼다."""
     try:
@@ -117,7 +134,10 @@ def run_source(name, module, filename):
         print(f"[{name}] 수집된 공고 없음", flush=True)
         return df, failed
 
-    df = df.drop_duplicates(subset=["링크"]).reset_index(drop=True)
+    df = dedup_by_link(df, name)
+    if df.empty:
+        print(f"[{name}] 링크 있는 공고 없음", flush=True)
+        return df, failed
     df["직군"] = df["검색어"].map(KEYWORD_TO_CATEGORY).fillna("기타")
     df["출처"] = name  # 소스별 파일에도 출처가 들어가도록 저장 전에 붙인다
     print(f"[{name}] {len(df)}건 수집", flush=True)
@@ -164,6 +184,9 @@ def main(force_write=None):
         raise RuntimeError("모든 소스 크롤링 실패 — all_jobs 파일을 갱신하지 않음")
 
     merged = pd.concat(frames, ignore_index=True)
+
+    # 소스 간 중복·빈 링크도 한 번 더 정리 (같은 공고가 두 사이트에 올라오는 경우)
+    merged = dedup_by_link(merged, "통합")
 
     # 노이즈 필터: 제목에 제외 키워드(보험영업 등)가 있으면 버림
     before = len(merged)
