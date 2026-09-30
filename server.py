@@ -11,9 +11,8 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 from run_and_notify import acquire_single_run_lock, release_single_run_lock
@@ -68,12 +67,17 @@ def run_crawl(pages):
 
 
 @app.post("/api/crawl")
-def start_crawl(pages: int = 10):
+def start_crawl(request: Request, pages: int = 10):
     """버튼 한 번 -> 전체 소스 크롤링.
 
     예전에는 run_all.py를 그냥 띄워서 동시 실행 잠금을 건너뛰었다. 스케줄 크롤링이
     도는 중에 버튼을 누르면 두 프로세스가 같은 CSV를 동시에 써서 결과가 섞였다.
     """
+    # 커스텀 헤더는 CORS preflight를 강제하므로, 다른 웹사이트가 몰래 이 API를 호출할 수 없다
+    if request.headers.get("X-JobScope") != "1":
+        return JSONResponse({"ok": False, "message": "forbidden"}, status_code=403)
+    pages = max(1, min(pages, 20))
+
     if state["running"]:
         return JSONResponse({"ok": False, "message": "이미 크롤링이 돌고 있어요"},
                             status_code=409)
@@ -105,9 +109,16 @@ def index():
     return FileResponse(BASE_DIR / "job_board.html")
 
 
-# 나머지 파일(job_board.html, all_jobs.json 등)은 정적으로 서빙
-# (API 라우트가 먼저 매칭되고, 못 찾으면 여기로 옴)
-app.mount("/", StaticFiles(directory=BASE_DIR), name="static")
+# 대시보드가 실제로 읽는 파일만 허용 목록으로 서빙한다.
+# 폴더 전체를 StaticFiles로 열면 slack_webhook.txt, jobs_history.db, .git/까지 내려간다.
+PUBLIC_FILES = {"job_board.html", "all_jobs.json", "linkedin_result.json"}
+
+
+@app.get("/{name}")
+def public_file(name: str):
+    if name not in PUBLIC_FILES or not (BASE_DIR / name).exists():
+        raise HTTPException(404)
+    return FileResponse(BASE_DIR / name)
 
 
 if __name__ == "__main__":

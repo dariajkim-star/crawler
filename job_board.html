@@ -454,7 +454,7 @@ let crawlTimer = null;
 
 async function startCrawl(){
   try{
-    const res = await fetch('/api/crawl', {method:'POST'});
+    const res = await fetch('/api/crawl', {method:'POST', headers:{'X-JobScope':'1'}});
     if(res.status === 409){ alert('이미 크롤링이 돌고 있어요. 잠시만 기다려주세요.'); pollCrawl(); return; }
     if(!res.ok) throw new Error();
     pollCrawl();
