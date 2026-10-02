@@ -42,6 +42,12 @@ TOKEN_FILE = BASE_DIR / "slack_token.txt"
 RUN_LOG = BASE_DIR / "crawl_history.log"
 LOCK_FILE = BASE_DIR / "run_and_notify.lock"
 
+# 크롤링 시작 전 네트워크 연결 확인용. 실제 수집 대상 중 두 곳을 쓴다.
+# 한 곳이 점검 중이어도 다른 곳으로 판정되도록 두 개를 둔다.
+NET_CHECK_URLS = ("https://www.saramin.co.kr", "https://www.work24.go.kr")
+NET_WAIT_MAX_SEC = 30 * 60  # 네트워크를 최대 30분까지 기다린다
+NET_WAIT_INTERVAL = 30
+
 _lock_fp = None  # 잠금 핸들 — 프로세스가 끝날 때까지 살려둬야 한다
 
 
@@ -60,6 +66,45 @@ def log_run(msg):
             f.write(line + "\n")
     except OSError:
         pass  # 로그 실패로 크롤링을 죽이지 않는다
+
+
+def network_ready(timeout=5):
+    """대상 사이트 중 한 곳이라도 응답하면 True.
+
+    HTTP 상태 코드는 보지 않는다. 403이든 503이든 응답이 돌아왔다는 것 자체가
+    연결은 살아 있다는 뜻이고, 여기서 판정하려는 건 그것뿐이다.
+    """
+    for url in NET_CHECK_URLS:
+        try:
+            requests.head(url, timeout=timeout, allow_redirects=True)
+            return True
+        except requests.RequestException:
+            continue
+    return False
+
+
+def wait_for_network():
+    """네트워크가 연결될 때까지 기다린다. 끝내 안 되면 False.
+
+    16:00 예약 실행 시점에 와이파이가 끊겨 있는 일이 반복됐다.
+      2026-09-30: 크롤링 내내 네트워크 없음 -> 전 소스 0건, 통합 파일 갱신 거부
+      2026-10-01: 시작 19초 전 끊김, 6분 뒤 복구 -> 5,680건 (평소의 절반)
+    크롤러가 키워드마다 하는 재시도는 30초 안에 소진되므로 그걸로는 못 버틴다.
+    크롤링을 시작하기 전에 여기서 기다리는 편이 실패한 수집을 되돌리는 것보다 싸다.
+    """
+    if network_ready():
+        return True
+
+    log_run("네트워크 없음 — 연결을 기다립니다")
+    waited = 0
+    while waited < NET_WAIT_MAX_SEC:
+        time.sleep(NET_WAIT_INTERVAL)
+        waited += NET_WAIT_INTERVAL
+        if network_ready():
+            log_run(f"네트워크 복구 확인 ({waited // 60}분 {waited % 60}초 대기)")
+            return True
+    log_run(f"네트워크 대기 {NET_WAIT_MAX_SEC // 60}분 초과 — 크롤링을 건너뜁니다")
+    return False
 
 
 def acquire_single_run_lock():
@@ -294,6 +339,12 @@ if __name__ == "__main__":
         report_interrupted_run()
         if "--force" not in sys.argv and completed_today():
             log_run("건너뜀 — 오늘 이미 크롤링을 완주함 (--force 로 강제 실행 가능)")
+            sys.exit(0)
+        # 네트워크가 죽은 채로 시작하면 전 소스가 빈손으로 끝난다. 먼저 기다린다.
+        if not wait_for_network():
+            send_slack(":warning: *JobScope 크롤링 건너뜀*\n"
+                       f"네트워크가 {NET_WAIT_MAX_SEC // 60}분 동안 연결되지 않았습니다. "
+                       "다음 예약 시각에 다시 시도합니다.")
             sys.exit(0)
 
     log_run("시작" + (" (--dry)" if dry else ""))
