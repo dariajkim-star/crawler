@@ -73,6 +73,7 @@
 | `run_and_notify.py` | 크롤링 + 이력 적재 + **슬랙 알림 (워치리스트 신규 + 오늘의 Top 10)** — 매일 10:30 |
 | `start_dashboard.py` | 대시보드 서버 런처 — 포트 중복이면 건너뜀. 매일 11:00 |
 | `scripts/*.vbs` | 작업 스케줄러용 숨김 런처 (UTF-16 필수) |
+| `scripts/fix_weekly_task.ps1` | 주간 리포트 작업을 숨김 런처로 교체 (관리자 권한 필요) |
 | `weekly_report.py` | **주간 리포트** → Obsidian 저장 + 슬랙 알림 — 매주 월 09:00 |
 | `server.py` | 대시보드 서버 (FastAPI) — 웹에서 버튼 한 번으로 전체 크롤링 |
 | `job_board.html` | 대시보드 — 출처/직군/지역/내상태 필터, 추천순 정렬, ⭐관심기업, 북마크/지원함 |
@@ -121,7 +122,7 @@ Windows 작업 스케줄러 등록 현황:
 |---|---|---|
 | `JobScope_Daily_Crawl` | 매일 10:30 | `scripts/run_crawl_hidden.vbs` → `run_and_notify.py` |
 | `JobScope_Dashboard` | 매일 11:00 | `scripts/run_dashboard_hidden.vbs` → `start_dashboard.py` |
-| `JobScope_Weekly_Report` | 매주 월 09:00 | `weekly_report.py` |
+| `JobScope_Weekly_Report` | 매주 월 09:00 | `scripts/run_weekly_hidden.vbs` → `weekly_report.py` |
 
 **런처를 거치는 이유 (`scripts/*.vbs`):** 작업이 `cmd`를 직접 띄우면 콘솔 창이 뜨고,
 그 창을 닫으면 돌던 크롤링이 종료코드 `0xC000013A`로 죽는다(2026-09-08·2026-11-10 실제 발생).
