@@ -35,7 +35,7 @@
                        │                      server.py (FastAPI, 버튼 크롤링)
                        ▼
        ┌───────────────────────────────┐
-       │      run_and_notify.py        │  매일 16:00 스케줄러
+       │      run_and_notify.py        │  매일 10:30 스케줄러
        │  history.py → jobs_history.db │  first_seen/last_seen/seen_count
        │  jd_match.py (Top 12건 JD 열람)│  → 신규공고·신규회사 판정
        │  → Slack (웹훅/토큰)           │
@@ -70,7 +70,9 @@
 | `scoring.py` | 공고 점수화 (직군 가중치 + 스킬/워치리스트/신규/마감임박 가점) + 노이즈 판정 |
 | `history.py` | **이력 DB** (`jobs_history.db`, SQLite) — 신규 공고/처음 보는 회사/반복 채용 분석 |
 | `jd_match.py` | Top 공고의 JD 상세를 열어 내 스킬 매칭 확인 |
-| `run_and_notify.py` | 크롤링 + 이력 적재 + **슬랙 알림 (워치리스트 신규 + 오늘의 Top 10)** — 매일 16:00 |
+| `run_and_notify.py` | 크롤링 + 이력 적재 + **슬랙 알림 (워치리스트 신규 + 오늘의 Top 10)** — 매일 10:30 |
+| `start_dashboard.py` | 대시보드 서버 런처 — 포트 중복이면 건너뜀. 매일 11:00 |
+| `scripts/*.vbs` | 작업 스케줄러용 숨김 런처 (UTF-16 필수) |
 | `weekly_report.py` | **주간 리포트** → Obsidian 저장 + 슬랙 알림 — 매주 월 09:00 |
 | `server.py` | 대시보드 서버 (FastAPI) — 웹에서 버튼 한 번으로 전체 크롤링 |
 | `job_board.html` | 대시보드 — 출처/직군/지역/내상태 필터, 추천순 정렬, ⭐관심기업, 북마크/지원함 |
@@ -112,8 +114,26 @@ python server.py
 - **[🔄 전체 크롤링 실행]** 버튼 → 진행상태 실시간 표시 → 완료 시 자동 새로고침
 - API: `POST /api/crawl?pages=10`, `GET /api/crawl/status` ([API 명세서](docs/API명세서.md))
 
-### 3. 매일 16:00 자동 크롤링 + 슬랙 알림
-Windows 작업 스케줄러에 `JobScope_Daily_Crawl_16` 작업이 등록되어 있음 (매일 16:00 `run_and_notify.py` 실행).
+### 3. 매일 10:30 자동 크롤링 + 슬랙 알림
+Windows 작업 스케줄러 등록 현황:
+
+| 작업 | 시각 | 실행 대상 |
+|---|---|---|
+| `JobScope_Daily_Crawl` | 매일 10:30 | `scripts/run_crawl_hidden.vbs` → `run_and_notify.py` |
+| `JobScope_Dashboard` | 매일 11:00 | `scripts/run_dashboard_hidden.vbs` → `start_dashboard.py` |
+| `JobScope_Weekly_Report` | 매주 월 09:00 | `weekly_report.py` |
+
+**런처를 거치는 이유 (`scripts/*.vbs`):** 작업이 `cmd`를 직접 띄우면 콘솔 창이 뜨고,
+그 창을 닫으면 돌던 크롤링이 종료코드 `0xC000013A`로 죽는다(2026-09-08·2026-11-10 실제 발생).
+VBS의 `WScript.Shell.Run(cmd, 0, False)`은 창 없이 비동기로 실행해 이 문제를 없앤다.
+
+> **`.vbs`는 반드시 UTF-16으로 저장할 것.** WSH는 `.vbs`를 ANSI로 읽기 때문에,
+> 프로젝트 경로의 한글(`바탕 화면`)이 깨져 `filename, directory name, or volume label
+> syntax is incorrect`로 즉시 죽는다. UTF-8로 저장하면 조용히 실패한다.
+
+**`start_dashboard.py`:** 8010 포트가 이미 열려 있으면 서버를 다시 띄우지 않고 종료한다.
+로그도 파이썬이 직접 연다 — `cmd`의 `>>`로 받으면 서버가 사는 내내 로그 파일을 독점해
+다음날 런처가 같은 파일을 열지 못하고 죽는다.
 
 **작업별로 로그 파일을 분리해야 한다.** cmd의 `>>` 리다이렉션은 파일을 독점으로 열기 때문에,
 여러 작업이 같은 로그 파일을 쓰도록 등록돼 있으면 동시에 떴을 때 늦게 연 쪽이
@@ -194,12 +214,13 @@ pip install requests beautifulsoup4 pandas tqdm fastapi uvicorn
 - `CATEGORY_WEIGHTS` — 직군 우선순위
 - `EXCLUDE_TITLE_KEYWORDS` — 노이즈 제외어 (보험영업 등)
 
-**매일 16:00 슬랙 알림**: 총건수 → ⭐관심 회사 신규 → 🏆오늘의 Top 10 (점수 + JD 스킬 매칭)
+**매일 10:30 슬랙 알림**: 총건수 → ⭐관심 회사 신규 → 🏆오늘의 Top 10 (점수 + JD 스킬 매칭)
 **매주 월 09:00 주간 리포트**: 직군별 추이 · 처음 등장한 회사(경쟁 적은 포지션) · 반복 채용 회사 → Obsidian `JobScope_주간리포트_날짜.md`
 
 이력 DB(`jobs_history.db`)에 모든 공고의 최초/최종 목격일이 누적되므로, 데이터가 쌓일수록 신규 탐지와 주간 리포트가 정확해짐.
 
 ## 변경 이력
+- **2026-11-10 (v2.0)**: 일일 크롤링 16:00 → **10:30**, 대시보드 **11:00 자동 기동** 추가 · 작업을 콘솔 창 없는 VBS 런처로 전환(창이 닫혀 크롤링이 죽던 문제 제거) · `start_dashboard.py` 포트 중복 가드.
 - **2026-10-02 (v1.9)**: 크롤링 시작 전 네트워크 연결을 확인하고 최대 30분 대기 — 예약 시각에 와이파이가 끊겨 수집이 통째로/절반 날아가던 문제 대응.
 - **2026-09-29 (v1.8.1)**: 링크 없는 행을 집계해서 제외 — 빈 링크끼리 중복 처리되어 조용히 유실되던 구조 제거. 소스 간 중복 제거도 통합 단계에 추가.
 - **2026-09-28 (v1.8)**: 10일간 크롤링이 2회만 돈 원인 추적 후 일괄 보강 — 완주 성공 마커로 이중 실행 판정(망가진 결과가 그날 재실행을 막던 문제 해소) · **급감 가드 + 통합본 백업**(부분 실패가 멀쩡한 파일을 덮어쓰는 것 차단) · 중단된 실행 슬랙 경고 · 마감일 포맷 통일(오늘마감/내일마감 인식, 2099 센티넬 정리) · `parse_deadline` 무예외 보장 · **피플앤잡 키워드 검색 미지원 대응**(목록 1회 수집 + 제목 기반 직군 판정) · 영문 약어 단어경계 매칭(AI가 hair·affairs에 걸리던 오매칭 제거) · 주간 리포트가 크롤링을 기다리도록 변경 + 빈 리포트 경고 · 대시보드 크롤링 버튼도 동시 실행 잠금 준수.
